@@ -3,7 +3,7 @@
  * @returns { Promise<void> }
  */
 exports.up = async function (knex) {
-  await knex.schema.dropTableIfExists("products");
+  //await knex.schema.dropTableIfExists("products");
   return knex.schema.createTable("products", function (table) {
     table.uuid("id").primary();
     table.string("product_name", 100).notNullable();

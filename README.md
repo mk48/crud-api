@@ -20,3 +20,13 @@ create new migration file
 run migration
 
 > pnpm knex migrate:run
+
+## Seed
+
+create seed file
+
+> pnpm knex seed:make _name_
+
+run one seed file
+
+> pnpm knex seed:run --specific=seed-filename.js
