@@ -7,12 +7,12 @@ const { faker } = require("@faker-js/faker");
  */
 exports.seed = async function (knex) {
   // Deletes ALL existing entries
-  await knex("products").del();
+  //await knex("products").del();
 
   const data = [];
 
   // generate fake data for products table insert 10 rows
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 50; i++) {
     data.push({
       id: faker.string.uuid(),
       product_name: faker.commerce.productName(),

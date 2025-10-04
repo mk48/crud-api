@@ -7,6 +7,8 @@
 
 > SET DEBUG=cursed-crud-api:\* & pnpm start
 
+http://localhost:3011
+
 ## migration
 
 init migration file
