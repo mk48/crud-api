@@ -53,7 +53,7 @@ router.get("/", async function (req, res, next) {
   const countQuery = query.clone();
   const [{ count }] = await countQuery.count({ count: "*" });
 
-  let [orderBy, orderDir] = (sortBy || "created_at:desc").split(":");
+  let [orderBy, orderDir] = (sortBy || "actionAt:desc").split(":");
   orderDir = orderDir && orderDir.toLowerCase() === "asc" ? "asc" : "desc";
 
   if (orderBy === "actionBy") {
@@ -82,6 +82,15 @@ router.get("/:id", async function (req, res, next) {
   res.json(toDto(row));
 });
 
+//---------------- Get Audit history ------------------
+router.get("/:id/audit-history", async function (req, res, next) {
+  const rows = await db("audit_history").select("*").where("source_table_row_id", req.params.id);
+
+  const result = rows.map((r) => JSON.parse(r.data));
+
+  res.json(toDtoList(result));
+});
+
 //---------------- Create one ------------------
 router.post("/", async function (req, res, next) {
   const newId = uuidv4();
@@ -101,25 +110,63 @@ router.post("/", async function (req, res, next) {
 
   await db("products").insert(newRow);
   const newProduct = await db("products").select("*").where("id", newId).first();
+
+  //add the new product into audit_history table
+  await db("audit_history").insert({
+    id: uuidv4(),
+    source_table_row_id: newId,
+    data: JSON.stringify(newProduct),
+  });
+
   res.status(201).json(toDto(newProduct));
 });
 
 //---------------- Update one ------------------
 router.put("/:id", async function (req, res, next) {
-  const { product_name, category, size, price } = req.body;
-  await db("products")
-    .where("id", req.params.id)
-    .update({ product_name, category, size, price, updated_at: new Date(), updated_by: userId });
+  const updateRow = {
+    product_name: req.body.productName,
+    department: req.body.department,
+    category: req.body.category,
+    material: req.body.material,
+    color: req.body.color,
+    description: req.body.description,
+    size: req.body.size,
+    price: req.body.price,
+    updated_at: new Date(),
+    updated_by: userId,
+  };
+
+  await db("products").where("id", req.params.id).update(updateRow);
+
   const updatedProduct = await db("products").select("*").where("id", req.params.id).first();
-  res.json(updatedProduct);
+
+  //add the new updated product into audit_history table
+  await db("audit_history").insert({
+    id: uuidv4(),
+    source_table_row_id: req.params.id,
+    data: JSON.stringify(updatedProduct),
+  });
+
+  res.json(toDto(updatedProduct));
 });
 
 //---------------- Soft delete ------------------
 router.delete("/:id", async function (req, res, next) {
   await db("products").where("id", req.params.id).update({ deleted_at: new Date(), deleted_by: userId });
+
+  const prod = await db("products").select("*").where("id", req.params.id).first();
+
+  //add the new updated product into audit_history table
+  await db("audit_history").insert({
+    id: uuidv4(),
+    source_table_row_id: req.params.id,
+    data: JSON.stringify(prod),
+  });
+
   res.status(204).end();
 });
 
+//---------------------------- Private func ------------------------------
 const dtoToEntity = {
   productName: "product_name",
   department: "department",
