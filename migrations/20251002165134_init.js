@@ -6,10 +6,17 @@ exports.up = async function (knex) {
   //await knex.schema.dropTableIfExists("products");
   return knex.schema.createTable("products", function (table) {
     table.uuid("id").primary();
+
     table.string("product_name", 100).notNullable();
-    table.string("category", 100).notNullable();
-    table.string("size", 30).notNullable();
+    table.string("department", 100);
+    table.string("category", 100);
+    table.string("material", 100);
+    table.string("color", 50);
+    table.text("description");
+    table.string("size", 30);
     table.float("price").notNullable();
+
+    //Audit
     table.timestamp("created_at");
     table.string("created_by");
     table.timestamp("updated_at");

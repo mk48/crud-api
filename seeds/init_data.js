@@ -1,3 +1,4 @@
+const { de } = require("@faker-js/faker");
 const { faker } = require("@faker-js/faker");
 
 /**
@@ -15,7 +16,11 @@ exports.seed = async function (knex) {
     data.push({
       id: faker.string.uuid(),
       product_name: faker.commerce.productName(),
+      department: faker.commerce.department(),
       category: faker.commerce.productAdjective(),
+      material: faker.commerce.productMaterial(),
+      color: faker.color.human(),
+      description: faker.commerce.productDescription(),
       size: faker.helpers.arrayElement(["S", "M", "L", "XL"]),
       price: parseFloat(faker.commerce.price()),
       created_at: faker.date.past({ years: 1 }),

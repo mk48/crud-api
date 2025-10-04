@@ -19,7 +19,7 @@ create new migration file
 
 run migration
 
-> pnpm knex migrate:run
+> pnpm knex migrate:up
 
 ## Seed
 
@@ -29,4 +29,4 @@ create seed file
 
 run one seed file
 
-> pnpm knex seed:run --specific=seed-filename.js
+> pnpm knex seed:run --specific=init_data.js
