@@ -8,7 +8,7 @@ const userId = "0b14e650-cf35-4edd-a7cb-2f2520503191";
 
 //---------------- Meta - cols ------------------
 router.get("/meta-data", async function (req, res, next) {
-  const data = [
+  const columns = [
     { name: "id", dataType: "uuid", isNullable: false },
     { name: "product_name", dataType: "string", isNullable: false },
     { name: "department", dataType: "string", isNullable: true },
@@ -17,6 +17,7 @@ router.get("/meta-data", async function (req, res, next) {
     { name: "color", dataType: "string", isNullable: true },
     { name: "description", dataType: "string", isNullable: true },
     { name: "size", dataType: "string", isNullable: true },
+    { name: "price", dataType: "number", isNullable: false },
     { name: "created_at", dataType: "date", isNullable: false },
     { name: "created_by", dataType: "string", isNullable: false },
     { name: "updated_at", dataType: "date", isNullable: false },
@@ -24,7 +25,25 @@ router.get("/meta-data", async function (req, res, next) {
     { name: "deleted_at", dataType: "date", isNullable: false },
     { name: "deleted_by", dataType: "string", isNullable: false },
   ];
-  res.json(data);
+
+  const result = {
+    columns: columns,
+    sortableColumns: [
+      "id",
+      "productName",
+      "department",
+      "category",
+      "material",
+      "color",
+      "description",
+      "size",
+      "price",
+      "actionAt",
+      "actionBy",
+    ],
+  };
+
+  res.json(result);
 });
 
 //---------------- List all ------------------
@@ -39,38 +58,129 @@ router.get("/meta-data", async function (req, res, next) {
 /// <returns>A paginated list of Country entries</returns>
 router.get("/", async function (req, res, next) {
   const { pageIndex, recordsPerPage, searchText, sortBy, includeDeleted } = req.query;
-  const offset = pageIndex * recordsPerPage;
-  let query = db("products").select("*");
+
+  let dataQuery = db("products").select("*");
+
+  //filter
   if (searchText) {
-    query.where("product_name", "like", `%${searchText}%`);
+    dataQuery.where("product_name", "like", `%${searchText}%`);
   }
 
+  // include deleted
   if (!includeDeleted || includeDeleted.toLowerCase() !== "true") {
-    query.andWhere("deleted_at", null);
+    dataQuery.andWhere("deleted_at", null);
   }
 
   // Count query for total records
-  const countQuery = query.clone();
-  const [{ count }] = await countQuery.count({ count: "*" });
+  const countQuery = dataQuery.clone().clearSelect().count({ count: "*" });
 
   let [orderBy, orderDir] = (sortBy || "actionAt:desc").split(":");
   orderDir = orderDir && orderDir.toLowerCase() === "asc" ? "asc" : "desc";
 
   if (orderBy === "actionBy") {
-    query.orderByRaw("COALESCE(deleted_by, updated_by, created_by) " + orderDir);
+    dataQuery.orderByRaw("COALESCE(deleted_by, updated_by, created_by) " + orderDir);
   } else if (orderBy === "actionAt") {
-    query.orderByRaw("COALESCE(deleted_at, updated_at, created_at) " + orderDir);
+    dataQuery.orderByRaw("COALESCE(deleted_at, updated_at, created_at) " + orderDir);
   } else {
-    const orderByEntity = dtoToEntity[orderBy];
-    query.orderBy(orderByEntity, orderDir);
+    dataQuery.orderBy(dtoToEntity[orderBy], orderDir);
   }
-  const rows = await query.limit(recordsPerPage).offset(offset);
+
+  //limit
+  const offset = pageIndex * recordsPerPage;
+  dataQuery.limit(recordsPerPage).offset(offset);
+
+  const [data, [{ count }]] = await Promise.all([dataQuery, countQuery]);
 
   const result = {
     pageIndex: Number(pageIndex),
     recordsPerPage: Number(recordsPerPage),
     totalRecords: Number(count),
-    records: toDtoList(rows),
+    records: toDtoList(data),
+  };
+
+  res.json(result);
+});
+
+//---------------- Advanced query ------------------
+/// <summary>
+/// Performs an advanced query on Products with pagination.
+/// </summary>
+/// <param name="pageIndex">Zero-based page index (0-999)</param>
+/// <param name="recordsPerPage">Number of records per page (1-200)</param>
+/// <param name="whereCondition">The Parameterized SQL WHERE clause for filtering the results. Example: ("column_name_1" = ? and "column_name_2" like ?) </param>
+/// <param name="whereConditionParametersJson">A JSON array containing all parameters value for the WHERE clause. Example: ["val1","%val2%"] </param>
+/// <param name="sortBy">Optional field name to sort results by. Example:- colname:asc OR colname:desc (Use /meta-data to know valid sortable column names)</param>
+/// <returns>A paginated list of Product entries</returns>
+router.get("/query", async function (req, res, next) {
+  const { pageIndex, recordsPerPage, whereCondition, whereConditionParametersJson, sortBy } = req.query;
+
+  const disallowedKeywords = ["DELETE", "DROP", "UPDATE", "INSERT"];
+  const allowedKeywords = ["deleted_at", "deleted_by", "updated_at", "updated_by"];
+
+  if (!whereCondition || typeof whereCondition !== "string") {
+    res.status(400).json({ message: "whereCondition is required and must be a string." });
+    return;
+  }
+
+  // Remove allowed keywords, then check for disallowed keywords
+  let whereConditionWithoutAllowed = whereCondition;
+  for (const allowed of allowedKeywords) {
+    const regex = new RegExp(allowed, "gi");
+    whereConditionWithoutAllowed = whereConditionWithoutAllowed.replace(regex, "");
+  }
+
+  // Check for disallowed SQL keywords
+  for (const disallowed of disallowedKeywords) {
+    const regex = new RegExp(`\\b${disallowed}\\b`, "i"); // word boundary, case-insensitive
+    if (regex.test(whereConditionWithoutAllowed)) {
+      res
+        .status(400)
+        .json({ message: `Invalid where condition. It should not contain ${disallowedKeywords.join(", ")}.` });
+      return;
+    }
+  }
+
+  // Step 3: Sanitize the condition (remove dangerous characters)
+  const sanitizedWhereCondition = whereCondition
+    .replace(/[;'\"\\]/g, "") // remove ; ' " \
+    .trim();
+
+  let dataQuery = db("products").select("*");
+
+  //filter
+  if (sanitizedWhereCondition) {
+    // parameter is automatically sanitized by Knex
+    // only the condition string is sanitized above
+    console.log(sanitizedWhereCondition);
+    console.log(whereConditionParametersJson);
+    dataQuery.whereRaw(sanitizedWhereCondition, JSON.parse(whereConditionParametersJson));
+  }
+
+  // Count query for total records
+  const countQuery = dataQuery.clone().clearSelect().count({ count: "*" });
+
+  let [orderBy, orderDir] = (sortBy || "actionAt:desc").split(":");
+  orderDir = orderDir && orderDir.toLowerCase() === "asc" ? "asc" : "desc";
+
+  if (orderBy === "actionBy") {
+    dataQuery.orderByRaw("COALESCE(deleted_by, updated_by, created_by) " + orderDir);
+  } else if (orderBy === "actionAt") {
+    dataQuery.orderByRaw("COALESCE(deleted_at, updated_at, created_at) " + orderDir);
+  } else {
+    dataQuery.orderBy(dtoToEntity[orderBy], orderDir);
+  }
+
+  //limit
+  const offset = pageIndex * recordsPerPage;
+  dataQuery.limit(recordsPerPage).offset(offset);
+
+  const [data, [{ count }]] = await Promise.all([dataQuery, countQuery]);
+
+  const result = {
+    pageIndex: Number(pageIndex),
+    recordsPerPage: Number(recordsPerPage),
+    totalRecords: Number(count),
+    records: toDtoList(data),
   };
 
   res.json(result);
