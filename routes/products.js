@@ -186,6 +186,33 @@ router.get("/query", async function (req, res, next) {
   res.json(result);
 });
 
+//---------------- Get id-name ------------------
+router.get("/id-name", async function (req, res, next) {
+  const { pageIndex = 0, recordsPerPage = 50, searchText } = req.query;
+
+  let dataQuery = db("products").select("id", "product_name");
+
+  //filter
+  if (searchText) {
+    dataQuery.where("product_name", "like", `%${searchText}%`);
+  }
+
+  dataQuery.andWhere("deleted_at", null).orderBy("product_name", "asc");
+
+  //limit
+  const offset = pageIndex * recordsPerPage;
+  const data = await dataQuery.limit(recordsPerPage).offset(offset);
+
+  const result = {
+    pageIndex: Number(pageIndex),
+    recordsPerPage: Number(recordsPerPage),
+    totalRecords: recordsPerPage,
+    records: toDtoList(data),
+  };
+
+  res.json(result);
+});
+
 //---------------- Get one ------------------
 router.get("/:id", async function (req, res, next) {
   const row = await db("products").select("*").where("id", req.params.id).first();
